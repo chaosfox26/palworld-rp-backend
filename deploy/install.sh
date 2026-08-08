@@ -168,7 +168,8 @@ if [ "$need_node" -eq 1 ]; then
   # keyring and the script carried on to fail two lines later with
   # "chmod: cannot access ...", which says nothing about the real cause.
   NODE_KEY_TMP="$(mktemp)"
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$NODE_KEY_TMP" \
+  curl -fsSL --connect-timeout 20 --max-time 60 --retry 3 --retry-delay 3 \
+    https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$NODE_KEY_TMP" \
     || { rm -f "$NODE_KEY_TMP"; die "Could not download the NodeSource signing key.
   Check this machine has internet access and can reach deb.nodesource.com."; }
   gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg < "$NODE_KEY_TMP" \
@@ -188,18 +189,125 @@ fi
 # --- Caddy ------------------------------------------------------------------
 step "Installing Caddy"
 
+# Deliberately NOT the Cloudsmith apt repository that Caddy's docs recommend.
+# Adding it means two network fetches to dl.cloudsmith.io plus an `apt-get
+# update` against it, and when that host is slow or blocked the install hangs
+# with no output at all — no timeout, no error, just a stalled TCP connection.
+# A single release tarball from GitHub, checksum-verified, removes that whole
+# dependency and the third-party repo along with it.
+
+CADDY_VERSION="${CADDY_VERSION:-2.11.4}"
+
+case "$(uname -m)" in
+  x86_64|amd64)   CADDY_ARCH=amd64 ;;
+  aarch64|arm64)  CADDY_ARCH=arm64 ;;
+  armv7l|armv7)   CADDY_ARCH=armv7 ;;
+  armv6l|armv6)   CADDY_ARCH=armv6 ;;
+  ppc64le)        CADDY_ARCH=ppc64le ;;
+  s390x)          CADDY_ARCH=s390x ;;
+  riscv64)        CADDY_ARCH=riscv64 ;;
+  *) die "Unsupported CPU architecture: $(uname -m). Install Caddy manually, then re-run." ;;
+esac
+
+# Published checksums for the pinned version, so the download is verified
+# without a second network call. Overriding CADDY_VERSION skips to fetching
+# checksums.txt instead.
+caddy_expected_sha() {
+  if [ "$CADDY_VERSION" != "2.11.4" ]; then echo ""; return; fi
+  case "$CADDY_ARCH" in
+    amd64)   echo "527fbf917c39189a1e3b31d34fa955601680b2d5c8055d2a87b8b9588dec7bb9" ;;
+    arm64)   echo "52d42ae12b3462097e9868da6dfed3c9648ae12edd3b3638102312af84cb6904" ;;
+    armv7)   echo "caa71eb180cf6f1f55b37a6c5a364d5cdca6c90f5473de9eb97b1df456184f42" ;;
+    armv6)   echo "24ed7d2c7dad8d9e57499c1004bd45909de5ca0683b38b22ae6fec80c4b80e92" ;;
+    ppc64le) echo "34a99f9c7f45ce0a881a5d50b3f45504e2165055c630c29059129401a8d2b8fd" ;;
+    s390x)   echo "730ef4430d40e23e222e370f6c76b48940c716c9eaaa3352b08c4c833d42b736" ;;
+    riscv64) echo "3bb7545503bb294785717d5faaeadba3c0c99869940d77d193efca5c0c2dc365" ;;
+    *) echo "" ;;
+  esac
+}
+
 if command -v caddy >/dev/null 2>&1; then
-  ok "Caddy $(caddy version | head -1) already installed"
+  ok "Caddy $(caddy version 2>/dev/null | head -1) already installed"
 else
-  apt-get $APT_OPTS install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl >/dev/null
-  curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  mkdir -p /etc/apt/sources.list.d
-  curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-    > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get $APT_OPTS update -qq
-  apt-get $APT_OPTS install -y -qq caddy >/dev/null
-  ok "Caddy $(caddy version | head -1) installed"
+  CADDY_TGZ="caddy_${CADDY_VERSION}_linux_${CADDY_ARCH}.tar.gz"
+  CADDY_URL="https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/${CADDY_TGZ}"
+  CADDY_TMP="$(mktemp -d)"
+
+  echo "  Downloading ${CADDY_TGZ} (about 16 MB)"
+  # Every flag here earns its place: --max-time stops the indefinite hang that
+  # the apt repo caused, and --retry rides out a transient blip.
+  curl -fL --proto '=https' --tlsv1.2 \
+       --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 3 \
+       -o "${CADDY_TMP}/${CADDY_TGZ}" "$CADDY_URL" \
+    || { rm -rf "$CADDY_TMP"; die "Could not download Caddy from GitHub.
+  Tried: ${CADDY_URL}
+  Check this machine has internet access and can reach github.com."; }
+
+  EXPECTED="$(caddy_expected_sha)"
+  if [ -z "$EXPECTED" ]; then
+    # Unpinned version: fetch the release's own checksum list.
+    curl -fsSL --connect-timeout 20 --max-time 60 \
+      "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_checksums.txt" \
+      -o "${CADDY_TMP}/checksums.txt" \
+      || { rm -rf "$CADDY_TMP"; die "Could not download the checksum file for Caddy ${CADDY_VERSION}."; }
+    EXPECTED="$(awk -v f="$CADDY_TGZ" '$2==f || $2=="*"f {print $1}' "${CADDY_TMP}/checksums.txt" | head -1)"
+    [ -n "$EXPECTED" ] || { rm -rf "$CADDY_TMP"; die "No checksum listed for ${CADDY_TGZ}."; }
+  fi
+
+  ACTUAL="$(sha256sum "${CADDY_TMP}/${CADDY_TGZ}" | awk '{print $1}')"
+  if [ "$ACTUAL" != "$EXPECTED" ]; then
+    rm -rf "$CADDY_TMP"
+    die "Caddy download failed its checksum check.
+  expected ${EXPECTED}
+  got      ${ACTUAL}
+  Refusing to install it."
+  fi
+  ok "Downloaded and checksum verified"
+
+  tar -C "$CADDY_TMP" -xzf "${CADDY_TMP}/${CADDY_TGZ}" caddy \
+    || { rm -rf "$CADDY_TMP"; die "Could not extract the Caddy binary."; }
+  install -m 0755 -o root -g root "${CADDY_TMP}/caddy" /usr/bin/caddy
+  rm -rf "$CADDY_TMP"
+
+  # The .deb would normally create these. Doing it by hand keeps the layout
+  # identical, so every other part of this installer and doctor.sh still apply.
+  if ! id caddy >/dev/null 2>&1; then
+    groupadd --system caddy 2>/dev/null || true
+    useradd --system --gid caddy --create-home --home-dir /var/lib/caddy \
+            --shell /usr/sbin/nologin --comment "Caddy web server" caddy 2>/dev/null || true
+  fi
+  mkdir -p /etc/caddy /var/lib/caddy /var/log/caddy
+  chown -R caddy:caddy /var/lib/caddy /var/log/caddy
+  chmod 0755 /var/log/caddy
+
+  # Mirrors the unit the official package ships. AmbientCapabilities is what
+  # lets an unprivileged process bind 80 and 443.
+  cat > /etc/systemd/system/caddy.service <<'CADDYUNIT'
+[Unit]
+Description=Caddy
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+LogsDirectory=caddy
+LogsDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
+CADDYUNIT
+  systemctl daemon-reload
+  ok "Caddy $(caddy version 2>/dev/null | head -1) installed from the official release"
 fi
 
 # --- Service account --------------------------------------------------------
@@ -561,18 +669,89 @@ chmod 0755 "${APP_DIR}/deploy/backup.sh" 2>/dev/null || true
 # --- Firewall ---------------------------------------------------------------
 step "Firewall"
 
+# 22, 80 and 443 are always opened.
+#   22  — SSH. Enabling a firewall without it is the classic way to lock
+#          yourself out of a remote server permanently.
+#   80  — Let's Encrypt validates over it. Closed means no certificate, and a
+#          silent renewal failure three months later.
+#   443 — what players actually connect to.
+FW_PORTS="22/tcp 80/tcp 443/tcp"
+
+# Anything else is site-specific, so it is asked for rather than guessed. A VNC
+# or remote-console port is the common case on a VPS.
+suggest_vnc_port() {
+  # If something is already listening on a non-standard port, offer it as the
+  # default so the number does not have to be remembered.
+  command -v ss >/dev/null 2>&1 || return 0
+  ss -tlnH 2>/dev/null | awk '{print $4}' \
+    | grep -vE '^(127\.|\[::1\]|\[?::1)' \
+    | sed 's/.*://' | grep -E '^[0-9]+$' | sort -un \
+    | grep -vE "^(22|80|443|${APP_PORT}|${ADMIN_UI_PORT:-8787})$" | head -1
+}
+
+valid_port() {
+  case "$1" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 65535 ] 2>/dev/null
+}
+
+VNC_CHOICE="${VNC_PORT:-}"
+
+if [ -n "$VNC_CHOICE" ]; then
+  : # supplied non-interactively
+elif [ -t 0 ]; then
+  DEFAULT_VNC="$(suggest_vnc_port)"
+  echo
+  echo "  Ports 22 (SSH), 80 and 443 will be opened automatically."
+  echo
+  if [ -n "$DEFAULT_VNC" ]; then
+    echo "  Something is listening on port ${DEFAULT_VNC} — that is probably your"
+    echo "  VNC or remote console."
+    printf '  VNC port to open [%s], or "n" for none: ' "$DEFAULT_VNC"
+  else
+    echo "  If you use a VNC or remote console, enter its port so the firewall"
+    echo "  does not cut you off from it."
+    printf '  VNC port to open (blank for none): '
+  fi
+  read -r VNC_CHOICE || VNC_CHOICE=""
+  case "$VNC_CHOICE" in
+    n|N|no|NO) VNC_CHOICE="" ;;
+    '')        VNC_CHOICE="${DEFAULT_VNC:-}" ;;
+  esac
+else
+  warn "Not interactive, so no VNC port was requested."
+  warn "To open one, re-run with: VNC_PORT=63274"
+fi
+
+if [ -n "$VNC_CHOICE" ]; then
+  if valid_port "$VNC_CHOICE"; then
+    FW_PORTS="$FW_PORTS ${VNC_CHOICE}/tcp"
+    ok "Will also open ${VNC_CHOICE}/tcp for VNC"
+  else
+    warn "\"${VNC_CHOICE}\" is not a valid port number (1-65535). Skipping it."
+  fi
+fi
+
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow 80/tcp  >/dev/null 2>&1 || true
-  ufw allow 443/tcp >/dev/null 2>&1 || true
-  ok "ufw: opened 80 and 443"
+  for pspec in $FW_PORTS; do
+    ufw allow "$pspec" >/dev/null 2>&1 || warn "Could not add ufw rule for ${pspec}"
+  done
+  ok "ufw: opened ${FW_PORTS}"
   if ufw status | grep -qE "^${APP_PORT}[/ ]"; then
     warn "Port ${APP_PORT} appears to be open in ufw. It no longer needs to be — the app binds loopback only."
     warn "Close it with: sudo ufw delete allow ${APP_PORT}/tcp"
   fi
 else
-  warn "ufw is not active. Ensure ports 80 and 443 are reachable, and that ${APP_PORT} is NOT exposed."
+  warn "ufw is not active, so no rules were applied. To turn it on:"
+  echo
+  for pspec in $FW_PORTS; do echo "        sudo ufw allow ${pspec}"; done
+  echo "        sudo ufw enable"
+  echo
+  echo "    Run the allow lines FIRST. Enabling ufw before allowing 22 will"
+  echo "    disconnect you, and keep a second session open until you have"
+  echo "    confirmed you can still get back in."
 fi
-warn "Contabo also has a firewall in its web panel. Ports 80 and 443 must be open there too."
+warn "Your VPS host has a separate firewall in its web panel. Ports 80 and 443"
+warn "must be open there too, or the certificate will never be issued."
 
 # --- Start ------------------------------------------------------------------
 step "Starting services"

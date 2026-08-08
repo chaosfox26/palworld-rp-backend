@@ -1,4 +1,4 @@
-# 🎭 Palworld RP Backend v2.3.3
+# 🎭 Palworld RP Backend v2.4.0
 
 **A private chat and roleplay-profile server for a Palworld UE4SS/PalSchema mod.**
 
@@ -37,10 +37,10 @@ Open a terminal on that machine, paste **one** line, press Enter:
 | Step | What happens | Why you need it |
 | :--- | :--- | :--- |
 | 1️⃣ | Installs **Node.js** | The language the server is written in. Brings `npm` and `npx` with it. |
-| 2️⃣ | Installs **Caddy** | A web server that gets you a free HTTPS certificate automatically. |
+| 2️⃣ | Installs **Caddy** | A web server that gets you a free HTTPS certificate automatically. Downloaded straight from its official GitHub release and checksum-verified — no third-party apt repository. |
 | 3️⃣ | Creates a **locked-down user** | The server runs as `palrp`, which has no password and no shell. If it were ever hacked, the attacker gets almost nothing. |
 | 4️⃣ | Gets an **HTTPS certificate** | Free, from Let's Encrypt. No domain needed — it builds a hostname from your IP. |
-| 5️⃣ | Opens **ports 80 and 443** | The doors your players connect through. |
+| 5️⃣ | Opens **22, 80 and 443** | SSH, plus the doors your players connect through. It also asks whether to open your VNC or remote-console port. |
 | 6️⃣ | Starts it **at boot** | Reboot the machine and it comes back on its own. |
 | 7️⃣ | Prints your **Backend URL** | Paste this into the mod. This is the only thing you need to keep. |
 
