@@ -1,4 +1,4 @@
-# 🎭 Palworld RP Backend v2.5.0
+# 🎭 Palworld RP Backend v2.5.1
 
 **A private chat and roleplay-profile server for a Palworld UE4SS/PalSchema mod.**
 
@@ -411,6 +411,7 @@ Every one of these is a real error somebody has hit.
 | :--- | :--- | :--- |
 | `install: missing file operand` | You put a word after the npx spec, so npm ran `/usr/bin/install` | Drop the trailing word: `npx -y github:chaosfox26/palworld-rp-backend` |
 | `ERROR: You must supply a command` | The **deprecated standalone npx** package is shadowing npm's built-in one | `sudo npm uninstall -g npx` then `hash -r` |
+| **Install hangs at the VNC port prompt** | You piped the installer (`curl \| sudo bash`). Ubuntu's `Defaults use_pty` gives the child a fresh pty, so it looks interactive, but sudo relays into it from the curl pipe — your keystrokes never arrive | Fixed in v2.5.1: piped installs no longer prompt. To choose a port, download first: `curl -o /tmp/setup.sh ...` then `sudo VNC_PORT=63274 bash /tmp/setup.sh` |
 | **Install hangs at "Installing Caddy"** | `needrestart` is showing an invisible "restart which services?" prompt, or `unattended-upgrades` holds the apt lock | Ctrl-C, then re-run with `sudo NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 DEBIAN_FRONTEND=noninteractive bash /tmp/setup.sh`. Fixed for good in v2.3.2. |
 | `open /var/log/caddy/access.log: permission denied` | Caddy can't write its log, so it never starts | `sudo chown -R caddy:caddy /var/log/caddy` then restart Caddy |
 | HTTPS never comes up | Usually the **VPS control-panel firewall**, not the server | Open 80 **and** 443 in your host's web panel. Then `palworld-rp doctor` |

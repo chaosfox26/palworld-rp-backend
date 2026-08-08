@@ -155,6 +155,12 @@ APT_OPTS="-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -o Dpkg:
 #
 # Set QUIET=1 for the tidy summary-only output.
 QUIET="${QUIET:-0}"
+if [ "$QUIET" != "1" ]; then
+  # npm is quiet by default about what it is fetching, which turns dependency
+  # installation into a long silent gap. Make it narrate.
+  export npm_config_loglevel="${npm_config_loglevel:-info}"
+  export npm_config_progress=true
+fi
 if [ "$QUIET" = "1" ]; then
   APT_Q="-qq"
   CURL_Q="-s"
@@ -725,9 +731,27 @@ valid_port() {
 
 VNC_CHOICE="${VNC_PORT:-}"
 
+# PALRP_STDIN_TTY is set by setup-linux.sh (or the CLI) at the top of the chain.
+# `[ -t 0 ]` is NOT sufficient on its own: under `curl | sudo bash` with
+# Ubuntu's default `use_pty`, stdin here IS a pty, but nothing the user types
+# can ever reach it. Prompting in that case guarantees a hang.
+CAN_PROMPT=0
+case "${PALRP_STDIN_TTY:-unset}" in
+  1)     CAN_PROMPT=1 ;;
+  0)     CAN_PROMPT=0 ;;
+  unset) [ -t 0 ] && CAN_PROMPT=1 ;;   # invoked directly, no wrapper
+esac
+
 if [ -n "$VNC_CHOICE" ]; then
   : # supplied non-interactively
-elif [ -t 0 ]; then
+elif [ "$CAN_PROMPT" = "0" ]; then
+  warn "This install was piped from another command, so it cannot read a reply."
+  warn "Ports 22, 80 and 443 are open. To open a VNC or console port as well:"
+  echo
+  echo "        sudo ufw allow <port>/tcp"
+  echo
+  echo "    Or re-run non-interactively with:  VNC_PORT=<port>"
+elif [ "$CAN_PROMPT" = "1" ]; then
   DEFAULT_VNC="$(suggest_vnc_port)"
   echo
   echo "  Ports 22 (SSH), 80 and 443 will be opened automatically."

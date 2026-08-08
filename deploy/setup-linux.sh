@@ -30,6 +30,20 @@ die()  { printf '\n%s  error%s %s\n\n' "$R" "$N" "$1" >&2; exit 1; }
 # Exported before anything else, and unconditionally. Previously these were set
 # only inside the "Node is missing" branch, so a machine that already had Node
 # skipped them entirely and hit needrestart's prompt later on.
+# Whether a human can actually answer a prompt is decided HERE and nowhere else.
+#
+# With `curl ... | sudo bash`, sudo's own stdin is the curl pipe. Ubuntu ships
+# `Defaults use_pty`, so sudo allocates a FRESH pty for the child and relays
+# into it from that pipe — which is already at EOF. Deeper in the chain the
+# child sees a pty on stdin and concludes it is interactive, prints a prompt,
+# and then waits forever: the user's keystrokes go to the real terminal, which
+# sudo is not reading. The prompt is unanswerable by construction.
+#
+# Only this script, at the top of the chain, can tell the difference. Everything
+# downstream trusts this value.
+if [ -t 0 ]; then PALRP_STDIN_TTY=1; else PALRP_STDIN_TTY=0; fi
+export PALRP_STDIN_TTY
+
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
@@ -165,4 +179,12 @@ printf '  Running: npx -y %s\n' "$SPEC"
 # Nothing after the spec. npm reads the next bare word as the name of the
 # program to run, so `npx <spec> install` launches /usr/bin/install and fails
 # with "install: missing file operand". The CLI installs by default.
+#
+# npx clones the repository silently by default, which is a long quiet gap right
+# where people expect to see progress. `loglevel=info` makes it report what it
+# is fetching.
+if [ "$QUIET" != "1" ]; then
+  export npm_config_loglevel=info
+  export npm_config_progress=true
+fi
 exec npx -y "$SPEC"

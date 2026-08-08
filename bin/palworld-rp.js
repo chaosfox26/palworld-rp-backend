@@ -25,6 +25,14 @@ const path = require('node:path');
 
 const menu = require('./menu');
 
+// If nothing upstream set this, decide it here — this process is then the top
+// of the chain. Downstream shell scripts cannot distinguish a real terminal
+// from the pty sudo hands them under `Defaults use_pty`, so the answer has to
+// be captured where stdin is still the user's own.
+if (process.env.PALRP_STDIN_TTY === undefined) {
+  process.env.PALRP_STDIN_TTY = process.stdin.isTTY ? '1' : '0';
+}
+
 const PKG_ROOT = path.join(__dirname, '..');
 const PKG = require(path.join(PKG_ROOT, 'package.json'));
 
@@ -122,8 +130,15 @@ function runPrivileged(script, extraArgs, opts) {
   warn('Elevating with sudo — you may be asked for your password.');
   // Pass the caller's configuration through explicitly: sudo strips the
   // environment by default, and these are the settings that matter.
-  const passthrough = ['DOMAIN', 'ACME_EMAIL', 'TLS_MODE']
-    .filter((k) => process.env[k])
+  // sudo strips the environment, so anything the installer needs must be named
+  // here. PALRP_STDIN_TTY especially: it records whether a human can actually
+  // answer a prompt, and losing it makes the installer guess wrong and hang.
+  // VNC_PORT and QUIET were being silently dropped before this list grew.
+  const passthrough = [
+    'DOMAIN', 'ACME_EMAIL', 'TLS_MODE',
+    'VNC_PORT', 'QUIET', 'CADDY_VERSION', 'NODE_MAJOR', 'PALRP_STDIN_TTY',
+  ]
+    .filter((k) => process.env[k] !== undefined && process.env[k] !== '')
     .map((k) => `${k}=${process.env[k]}`);
   return run('sudo', [...passthrough, 'bash', scriptPath, ...extraArgs], opts);
 }
