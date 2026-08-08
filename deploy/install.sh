@@ -238,6 +238,12 @@ cat > /usr/local/bin/palworld-rp <<EOF
 exec "$(command -v node)" "${APP_DIR}/bin/palworld-rp.js" "\$@"
 EOF
 chmod 0755 /usr/local/bin/palworld-rp
+
+# Both names, because package.json declares both and people reach for the
+# longer one after reading the repository name. A missing command is a much
+# more confusing first experience than a duplicate launcher.
+cp /usr/local/bin/palworld-rp /usr/local/bin/palworld-rp-backend
+chmod 0755 /usr/local/bin/palworld-rp-backend
 ok "palworld-rp is now on your PATH"
 
 # --- Data directory ---------------------------------------------------------
