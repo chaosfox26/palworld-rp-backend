@@ -1,0 +1,32 @@
+# Caddy terminates TLS and proxies to the Node backend.
+#
+# Caddy obtains and renews a free Let's Encrypt certificate automatically, so
+# there is nothing to configure beyond pointing DOMAIN at this server's IP.
+# Requirements: an A record for $DOMAIN, and ports 80 and 443 open.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# WebSocket upgrades pass through without special handling in Caddy 2.
+	reverse_proxy backend:3000 {
+		header_up X-Real-IP {remote_host}
+		# Chat messages can be large by design; do not buffer them.
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

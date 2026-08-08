@@ -1,0 +1,44 @@
+# Generated from deploy/Caddyfile.template by deploy/install.sh.
+# Edit /etc/caddy/Caddyfile directly, then: sudo systemctl reload caddy
+#
+# Caddy obtains and renews a Let's Encrypt certificate automatically. That
+# requires port 80 reachable from the internet (for the ACME challenge) as well
+# as 443 — opening only 443 is a common cause of issuance failing.
+
+# BEGIN_EMAIL
+{
+	email {{ACME_EMAIL}}
+}
+# END_EMAIL
+
+{{SITE}} {
+{{TLS_BLOCK}}
+
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:{{APP_PORT}} {
+		# The app trusts exactly one proxy hop and reads the client IP from
+		# here for its per-IP rate limits.
+		header_up X-Real-IP {remote_host}
+
+		# Roleplay messages can be very large by design, and chat must not sit
+		# in a buffer waiting to be flushed. -1 streams immediately, which also
+		# keeps WebSocket frames prompt.
+		flush_interval -1
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format console
+	}
+}

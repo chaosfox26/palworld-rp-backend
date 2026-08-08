@@ -1,0 +1,39 @@
+# Installed by deploy/install.sh as /etc/sudoers.d/palworld-rp-backend.
+# {{APP_DIR}} and the service user are substituted at install time.
+#
+# WHY THIS EXISTS
+# The backend runs as an unprivileged account that deliberately cannot write its
+# own code, edit its env file, or restart itself. That is the right default. But
+# the admin panel needs to restart services and trigger a backup, so this grants
+# exactly those abilities and nothing else.
+#
+# WHAT IT DOES NOT GRANT
+# No shell, no editor, no package manager, no arbitrary systemctl verb, no
+# wildcards, no ability to touch any unit other than the two named below. There
+# is no path here from "panel compromised" to "root shell": every command is
+# fully qualified with fixed arguments, so nothing can be smuggled in through an
+# argument. `systemctl edit` and `systemctl link`, which could execute arbitrary
+# code, are absent by design.
+#
+# If you would rather not grant even this, delete this file. The panel keeps
+# working and simply reports that service control is not permitted.
+
+Cmnd_Alias PALRP_SERVICE = \
+    /usr/bin/systemctl restart {{APP_NAME}}, \
+    /usr/bin/systemctl stop    {{APP_NAME}}, \
+    /usr/bin/systemctl start   {{APP_NAME}}, \
+    /usr/bin/systemctl restart caddy, \
+    /usr/bin/systemctl reload  caddy, \
+    /usr/bin/systemctl stop    caddy, \
+    /usr/bin/systemctl start   caddy, \
+    /bin/systemctl restart {{APP_NAME}}, \
+    /bin/systemctl stop    {{APP_NAME}}, \
+    /bin/systemctl start   {{APP_NAME}}, \
+    /bin/systemctl restart caddy, \
+    /bin/systemctl reload  caddy, \
+    /bin/systemctl stop    caddy, \
+    /bin/systemctl start   caddy
+
+Cmnd_Alias PALRP_BACKUP = {{APP_DIR}}/deploy/backup.sh
+
+{{SERVICE_USER}} ALL=(root) NOPASSWD: PALRP_SERVICE, PALRP_BACKUP

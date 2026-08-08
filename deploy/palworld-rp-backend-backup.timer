@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily backup of Palworld RP Backend data
+
+[Timer]
+OnCalendar=daily
+# Spread the run over an hour so it does not land at exactly midnight alongside
+# every other daily job on the box.
+RandomizedDelaySec=1h
+# If the server was powered off when the timer was due, run it on next boot.
+Persistent=true
+Unit=palworld-rp-backend-backup.service
+
+[Install]
+WantedBy=timers.target

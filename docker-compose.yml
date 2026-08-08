@@ -1,0 +1,77 @@
+# Two ways to run this:
+#
+#   Plain HTTP, no domain name (fine for testing on your own machine):
+#       docker compose up -d --build backend
+#
+#   Public with automatic HTTPS (what you want for a public server):
+#       set DOMAIN and ACME_EMAIL in .env, then
+#       docker compose --profile tls up -d --build
+#
+# Note there is no `version:` key. It has been obsolete since Compose v2 and
+# current versions print a warning if you include it.
+
+services:
+  backend:
+    build: .
+    container_name: palworld-rp-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the app only ever needs to talk to Caddy.
+      HOST: 0.0.0.0
+      DATA_DIR: /usr/src/app/data
+    volumes:
+      # Named volume, not a bind mount: it survives `docker compose down`,
+      # cannot be clobbered by a stray `rm -rf` in your home directory, and is
+      # backed up as a unit. Use `docker compose cp` to get files in and out.
+      - rp-data:/usr/src/app/data
+    ports:
+      # Bound to loopback only. With the tls profile, Caddy is the only thing
+      # that reaches the app, and the app is never directly exposed. If you are
+      # deliberately running without TLS, change this to "3000:3000" — and
+      # understand that passwords will cross the internet in cleartext.
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: palworld-rp-caddy
+    restart: unless-stopped
+    profiles: ["tls"]
+    depends_on:
+      - backend
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. rp.example.com}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  rp-data:
+  caddy-data:
+  caddy-config:

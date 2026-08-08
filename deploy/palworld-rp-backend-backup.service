@@ -1,0 +1,15 @@
+[Unit]
+Description=Back up Palworld RP Backend data
+Documentation=file:/opt/palworld-rp-backend/deploy/backup.sh
+After=palworld-rp-backend.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env bash /opt/palworld-rp-backend/deploy/backup.sh
+# Runs as root: it reads the service user's data and writes to /var/backups.
+User=root
+Nice=10
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=palworld-rp-backup

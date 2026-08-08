@@ -1,0 +1,82 @@
+[Unit]
+Description=Palworld RP Backend (chat + roleplay profiles)
+Documentation=https://github.com/chaosfox26/palworld-rp-backend
+After=network-online.target
+Wants=network-online.target
+
+# If the process crashes in a tight loop, stop trying after 5 attempts in 60s
+# rather than hammering the box forever. `systemctl reset-failed` clears it.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=palrp
+Group=palrp
+
+WorkingDirectory=/opt/palworld-rp-backend
+EnvironmentFile=/etc/palworld-rp-backend/env
+ExecStart=/usr/bin/node server.js
+
+Restart=always
+RestartSec=3
+# server.js traps SIGTERM and closes sockets cleanly; give it room to finish.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Data directory. systemd creates /var/lib/palworld-rp-backend with the right
+# owner and mode on start, which is also what makes it writable despite
+# ProtectSystem=strict below.
+StateDirectory=palworld-rp-backend
+StateDirectoryMode=0750
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=palworld-rp
+
+LimitNOFILE=65535
+UMask=0077
+
+# --- Sandboxing -------------------------------------------------------------
+# This service is reachable from the public internet, so it gets the strictest
+# confinement Node will tolerate. Verify with: systemd-analyze security palworld-rp-backend
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+
+# The app only ever opens TCP sockets.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# It needs no capabilities whatsoever: it binds 3000 (unprivileged) on
+# loopback, and Caddy owns 80/443.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @obsolete
+
+# Deliberately NOT set, and each for a concrete reason:
+#   MemoryDenyWriteExecute - V8 compiles JS to machine code at runtime and needs
+#     writable-then-executable pages. Enabling it makes Node refuse to start.
+#   ProcSubset=pid - hides /proc/cpuinfo, which libuv reads for CPU detection.
+#   PrivateUsers - interacts badly with StateDirectory on some systemd versions.
+# Everything that IS set above has been chosen to be compatible with V8.
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,62 @@
+{
+  "name": "palworld-rp",
+  "version": "2.3.1",
+  "description": "Standalone chat and roleplay-profile backend for a Palworld UE4SS/PalSchema mod. One command on Windows, macOS and Linux.",
+  "main": "server.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/run.js",
+    "test:unit": "node test/unit.js",
+    "migrate": "node scripts/migrate-from-v1.js",
+    "keygen": "node scripts/keygen.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  },
+  "bin": {
+    "palworld-rp": "bin/palworld-rp.js",
+    "palworld-rp-backend": "bin/palworld-rp.js"
+  },
+  "keywords": [
+    "palworld",
+    "ue4ss",
+    "palschema",
+    "roleplay",
+    "chat",
+    "backend",
+    "self-hosted"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chaosfox26/palworld-rp-backend.git"
+  },
+  "homepage": "https://github.com/chaosfox26/palworld-rp-backend#readme",
+  "bugs": {
+    "url": "https://github.com/chaosfox26/palworld-rp-backend/issues"
+  },
+  "files": [
+    "npm-shrinkwrap.json",
+    "bin/",
+    "src/",
+    "deploy/",
+    "scripts/",
+    "server.js",
+    "README.md",
+    "INSTALL.md",
+    "ADMIN.md",
+    "API.md",
+    "ENCRYPTION.md",
+    "LICENSE",
+    ".env.example",
+    "Install-Windows.bat",
+    "Install-Mac-Linux.command"
+  ]
+}

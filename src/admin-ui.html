@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Palworld RP Backend</title>
+<style>
+  :root{
+    --bg:#12141a; --panel:#1a1d26; --panel2:#20242f; --line:#2c313d;
+    --text:#e6e8ee; --dim:#9aa1b1; --accent:#7aa2f7; --ok:#8fd67a;
+    --warn:#e0af68; --bad:#f7768e; --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--text);padding:7px 13px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:#0f1117;border-color:var(--accent);font-weight:600}
+  button.danger{border-color:#5a2b34;color:var(--bad)}
+  button.danger:hover{background:#2a1a1e}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input,select{font:inherit;background:#0e1017;color:var(--text);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+  input:focus,select:focus{outline:none;border-color:var(--accent)}
+
+  .login{max-width:380px;margin:14vh auto;padding:26px;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--radius)}
+  .login h1{margin:0 0 6px;font-size:18px}
+  .login p{margin:0 0 18px;color:var(--dim);font-size:13px}
+
+  header{display:flex;align-items:center;gap:14px;padding:12px 20px;
+    background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{margin:0;font-size:15px;font-weight:650;letter-spacing:.2px}
+  header .url{color:var(--dim);font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  header .spacer{flex:1}
+
+  nav{display:flex;gap:4px;padding:10px 20px 0;flex-wrap:wrap}
+  nav button{border:none;background:none;color:var(--dim);padding:8px 14px;border-radius:8px 8px 0 0}
+  nav button.on{background:var(--panel);color:var(--text);font-weight:600}
+
+  main{padding:18px 20px 40px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;margin-bottom:14px}
+  .card h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;
+    letter-spacing:.7px;color:var(--dim);font-weight:650}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px}
+  .stat .k{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  .stat .v{font-size:19px;font-weight:650;margin-top:3px;word-break:break-word}
+
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.6px;font-weight:650}
+  tbody tr:hover{background:var(--panel2)}
+
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:650}
+  .pill.on{background:#1c3324;color:var(--ok)}
+  .pill.off{background:#2a2d38;color:var(--dim)}
+  .pill.bad{background:#3a1d24;color:var(--bad)}
+  .pill.warn{background:#3a2f1c;color:var(--warn)}
+
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .setting{padding:13px 0;border-bottom:1px solid var(--line)}
+  .setting:last-child{border-bottom:none}
+  .setting .lbl{font-weight:600}
+  .setting .help{color:var(--dim);font-size:12.5px;margin:3px 0 9px}
+  .setting .ctl{display:flex;gap:8px;align-items:center;max-width:430px}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0e1017;
+    border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:12px}
+  pre{background:#0b0d13;border:1px solid var(--line);border-radius:8px;padding:12px;
+    overflow:auto;max-height:60vh;font-size:12.5px;line-height:1.45;margin:0;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+  .toast{position:fixed;right:18px;bottom:18px;background:var(--panel2);
+    border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:8px;padding:11px 15px;max-width:400px;box-shadow:0 8px 26px #0009}
+  .toast.bad{border-left-color:var(--bad)}
+  .toast.ok{border-left-color:var(--ok)}
+  .muted{color:var(--dim)}
+  .warnbox{background:#2a2214;border:1px solid #4a3a1c;color:var(--warn);
+    border-radius:8px;padding:11px 13px;font-size:13px;margin-bottom:13px}
+  .hide{display:none}
+</style>
+</head>
+<body>
+
+<div id="login" class="login">
+  <h1>Palworld RP Backend</h1>
+  <p>Enter the admin token from your env file.</p>
+  <form id="loginForm">
+    <input id="token" type="password" placeholder="Admin token" autocomplete="current-password" autofocus>
+    <div style="height:10px"></div>
+    <button class="primary" type="submit" style="width:100%">Sign in</button>
+  </form>
+  <p id="loginErr" class="hide" style="color:var(--bad);margin-top:12px"></p>
+</div>
+
+<div id="app" class="hide">
+  <header>
+    <h1>Palworld RP Backend</h1>
+    <span class="url" id="hdrUrl"></span>
+    <span class="spacer"></span>
+    <span class="muted" id="hdrVer"></span>
+    <button id="refresh">Refresh</button>
+    <button id="logout">Sign out</button>
+  </header>
+
+  <nav>
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="players">Players</button>
+    <button data-tab="settings">Settings</button>
+    <button data-tab="backups">Backups</button>
+    <button data-tab="logs">Logs</button>
+  </nav>
+
+  <main>
+    <section id="tab-overview">
+      <div class="card">
+        <h2>Status</h2>
+        <div class="grid" id="stats"></div>
+      </div>
+      <div class="card">
+        <h2>Services</h2>
+        <div id="services"></div>
+      </div>
+    </section>
+
+    <section id="tab-players" class="hide">
+      <div class="card">
+        <h2>Players</h2>
+        <div class="row" style="margin-bottom:12px">
+          <input id="psearch" placeholder="Filter by name" style="max-width:280px">
+          <span class="muted" id="pcount"></span>
+        </div>
+        <table>
+          <thead><tr><th>Name</th><th>Status</th><th>Mutes</th><th style="width:250px">Actions</th></tr></thead>
+          <tbody id="ptable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="hide">
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="warnbox">
+          These are written to <span class="kbd">settings.json</span> in the data
+          directory, layered over your env file. Security-critical values — the
+          admin token, domain, TLS mode, ports — are not editable here by design
+          and need root.
+        </div>
+        <div id="settings"></div>
+      </div>
+    </section>
+
+    <section id="tab-backups" class="hide">
+      <div class="card">
+        <h2>Backups</h2>
+        <div class="row" style="margin-bottom:12px">
+          <button class="primary" id="mkbackup">Back up now</button>
+          <span class="muted" id="bdir"></span>
+        </div>
+        <table>
+          <thead><tr><th>File</th><th>Size</th><th>Created</th></tr></thead>
+          <tbody id="btable"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-logs" class="hide">
+      <div class="card">
+        <h2>Logs</h2>
+        <div class="row" style="margin-bottom:12px">
+          <select id="lunit" style="max-width:180px">
+            <option value="backend">Backend</option>
+            <option value="caddy">Caddy</option>
+          </select>
+          <select id="llines" style="max-width:140px">
+            <option value="100">100 lines</option>
+            <option value="200" selected>200 lines</option>
+            <option value="500">500 lines</option>
+            <option value="1000">1000 lines</option>
+          </select>
+          <button id="lload">Load</button>
+        </div>
+        <pre id="logs" class="muted">Choose a unit and press Load.</pre>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var $ = function(s){ return document.querySelector(s); };
+
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  function toast(msg, kind){
+    var t = document.createElement('div');
+    t.className = 'toast ' + (kind || '');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, kind === 'bad' ? 7000 : 3500);
+  }
+
+  function api(path, opts){
+    opts = opts || {};
+    return fetch(path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? {'Content-Type':'application/json'} : {},
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      credentials: 'same-origin'
+    }).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(j){
+        if (!r.ok) {
+          if (r.status === 401) { showLogin(); }
+          var e = new Error(j.error || ('HTTP ' + r.status));
+          e.detail = j.detail;
+          throw e;
+        }
+        return j;
+      });
+    });
+  }
+
+  function showLogin(){ $('#login').classList.remove('hide'); $('#app').classList.add('hide'); }
+  function showApp(){ $('#login').classList.add('hide'); $('#app').classList.remove('hide'); }
+
+  // ---- login ----
+  $('#loginForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var err = $('#loginErr');
+    err.classList.add('hide');
+    api('/api/login', { method:'POST', body:{ token: $('#token').value } })
+      .then(function(){ $('#token').value=''; showApp(); loadAll(); })
+      .catch(function(ex){ err.textContent = ex.message; err.classList.remove('hide'); });
+  });
+
+  $('#logout').addEventListener('click', function(){
+    api('/api/logout', { method:'POST' }).finally(showLogin);
+  });
+  $('#refresh').addEventListener('click', loadAll);
+
+  // ---- tabs ----
+  Array.prototype.forEach.call(document.querySelectorAll('nav button'), function(b){
+    b.addEventListener('click', function(){
+      Array.prototype.forEach.call(document.querySelectorAll('nav button'), function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      ['overview','players','settings','backups','logs'].forEach(function(t){
+        $('#tab-'+t).classList.toggle('hide', t !== b.dataset.tab);
+      });
+      if (b.dataset.tab === 'players') loadPlayers();
+      if (b.dataset.tab === 'settings') loadSettings();
+      if (b.dataset.tab === 'backups') loadBackups();
+    });
+  });
+
+  // ---- overview ----
+  function fmtUptime(s){
+    var d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60);
+    return (d ? d+'d ' : '') + (h ? h+'h ' : '') + m + 'm';
+  }
+
+  function loadOverview(){
+    return api('/api/overview').then(function(o){
+      $('#hdrUrl').textContent = o.backendUrl || '';
+      $('#hdrVer').textContent = 'v' + o.version;
+      var stats = [
+        ['Players online', o.playersOnline],
+        ['Accounts', o.accounts],
+        ['Uptime', fmtUptime(o.uptimeSec)],
+        ['Registration', o.registrationOpen ? 'Open' : 'Closed'],
+        ['AES-256 envelopes', o.requireEncryption ? 'Required' : 'Optional'],
+        ['Node', o.node]
+      ];
+      $('#stats').innerHTML = stats.map(function(s){
+        return '<div class="stat"><div class="k">'+esc(s[0])+'</div><div class="v">'+esc(s[1])+'</div></div>';
+      }).join('');
+
+      var rows = [['backend','Backend',o.services.backend],['caddy','Caddy',o.services.caddy]];
+      $('#services').innerHTML = '<table><tbody>' + rows.map(function(r){
+        var st = r[2] || {};
+        var cls = st.state === 'active' ? 'on' : (st.state === 'unknown' ? 'off' : 'bad');
+        return '<tr><td style="width:110px"><strong>'+esc(r[1])+'</strong></td>'+
+          '<td><span class="pill '+cls+'">'+esc(st.state||'?')+'</span></td>'+
+          '<td class="muted">restarts: '+esc(st.restarts != null ? st.restarts : '?')+'</td>'+
+          '<td style="text-align:right">'+
+            '<button data-svc="'+r[0]+'" data-act="restart">Restart</button> '+
+            '<button class="danger" data-svc="'+r[0]+'" data-act="stop">Stop</button>'+
+          '</td></tr>';
+      }).join('') + '</tbody></table>';
+
+      Array.prototype.forEach.call($('#services').querySelectorAll('button'), function(b){
+        b.addEventListener('click', function(){
+          var what = b.dataset.act + ' ' + b.dataset.svc;
+          if (!confirm('Really ' + what + '?' + (b.dataset.svc === 'backend' ? '\n\nThis panel runs inside the backend, so it will briefly go away.' : ''))) return;
+          b.disabled = true;
+          api('/api/service/'+b.dataset.svc+'/'+b.dataset.act, { method:'POST' })
+            .then(function(){ toast(what + ' sent', 'ok'); setTimeout(loadOverview, 2500); })
+            .catch(function(ex){ toast(ex.message + (ex.detail ? ' — ' + ex.detail : ''), 'bad'); })
+            .finally(function(){ b.disabled = false; });
+        });
+      });
+    });
+  }
+
+  // ---- players ----
+  var psearchTimer;
+  $('#psearch').addEventListener('input', function(){
+    clearTimeout(psearchTimer);
+    psearchTimer = setTimeout(loadPlayers, 220);
+  });
+
+  function loadPlayers(){
+    var q = encodeURIComponent($('#psearch').value.trim());
+    return api('/api/players?q=' + q).then(function(d){
+      $('#pcount').textContent = d.total + ' account' + (d.total === 1 ? '' : 's');
+      if (!d.players.length) {
+        $('#ptable').innerHTML = '<tr><td colspan="4" class="muted">No accounts yet.</td></tr>';
+        return;
+      }
+      $('#ptable').innerHTML = d.players.map(function(p){
+        var status = p.banned
+          ? '<span class="pill bad">banned</span>'
+          : (p.online ? '<span class="pill on">online</span>' : '<span class="pill off">offline</span>');
+        return '<tr><td><strong>'+esc(p.name)+'</strong>'+
+          (p.banReason ? '<div class="muted" style="font-size:12px">'+esc(p.banReason)+'</div>' : '')+
+          '</td><td>'+status+'</td><td class="muted">'+esc(p.mutes)+'</td><td>'+
+          (p.banned
+            ? '<button data-n="'+esc(p.name)+'" data-a="unban">Unban</button> '
+            : '<button data-n="'+esc(p.name)+'" data-a="ban">Ban</button> '+
+              '<button data-n="'+esc(p.name)+'" data-a="kick">Kick</button> ')+
+          '<button class="danger" data-n="'+esc(p.name)+'" data-a="delete">Delete</button>'+
+          '</td></tr>';
+      }).join('');
+
+      Array.prototype.forEach.call($('#ptable').querySelectorAll('button'), function(b){
+        b.addEventListener('click', function(){
+          var n = b.dataset.n, a = b.dataset.a, body = {};
+          if (a === 'ban') {
+            var reason = prompt('Ban ' + n + '. Reason (shown to them):', 'Breaking server rules');
+            if (reason === null) return;
+            body.reason = reason;
+          } else if (a === 'delete') {
+            if (!confirm('Permanently delete ' + n + '?\n\nTheir account and profile are removed. This cannot be undone.')) return;
+          }
+          b.disabled = true;
+          api('/api/players/'+encodeURIComponent(n)+'/'+a, { method:'POST', body:body })
+            .then(function(){ toast(a + ' ' + n, 'ok'); loadPlayers(); })
+            .catch(function(ex){ toast(ex.message, 'bad'); b.disabled = false; });
+        });
+      });
+    });
+  }
+
+  // ---- settings ----
+  function loadSettings(){
+    return api('/api/settings').then(function(d){
+      $('#settings').innerHTML = d.settings.map(function(s){
+        var ctl = s.type === 'bool'
+          ? '<select data-k="'+s.key+'"><option value="true"'+(s.value?' selected':'')+'>On</option>'+
+            '<option value="false"'+(!s.value?' selected':'')+'>Off</option></select>'
+          : '<input type="number" data-k="'+s.key+'" value="'+esc(s.value)+'" min="'+s.min+'" max="'+s.max+'">';
+        return '<div class="setting"><div class="lbl">'+esc(s.label)+
+          (s.overridden ? ' <span class="pill warn">overridden</span>' : '')+
+          (s.restart ? ' <span class="pill off">needs restart</span>' : '')+
+          '</div><div class="help">'+esc(s.help)+'</div>'+
+          '<div class="ctl">'+ctl+'<button data-save="'+s.key+'">Save</button>'+
+          (s.overridden ? '<button data-reset="'+s.key+'">Reset</button>' : '')+
+          '</div></div>';
+      }).join('');
+
+      Array.prototype.forEach.call($('#settings').querySelectorAll('[data-save]'), function(b){
+        b.addEventListener('click', function(){
+          var key = b.dataset.save;
+          var el = $('#settings [data-k="'+key+'"]');
+          var patch = {}; patch[key] = el.value;
+          b.disabled = true;
+          api('/api/settings', { method:'PATCH', body:patch })
+            .then(function(){ toast('Saved ' + key, 'ok'); loadSettings(); })
+            .catch(function(ex){ toast(ex.message, 'bad'); b.disabled = false; });
+        });
+      });
+      Array.prototype.forEach.call($('#settings').querySelectorAll('[data-reset]'), function(b){
+        b.addEventListener('click', function(){
+          api('/api/settings/reset', { method:'POST', body:{ key: b.dataset.reset } })
+            .then(function(){ toast('Reset to env value', 'ok'); loadSettings(); })
+            .catch(function(ex){ toast(ex.message, 'bad'); });
+        });
+      });
+    });
+  }
+
+  // ---- backups ----
+  function fmtSize(n){
+    if (n > 1048576) return (n/1048576).toFixed(1) + ' MB';
+    if (n > 1024) return (n/1024).toFixed(1) + ' KB';
+    return n + ' B';
+  }
+
+  function loadBackups(){
+    return api('/api/backups').then(function(d){
+      $('#bdir').textContent = d.dir || '';
+      if (!d.backups.length) {
+        $('#btable').innerHTML = '<tr><td colspan="3" class="muted">No backups yet'+
+          (d.error ? ' — ' + esc(d.error) : '') + '.</td></tr>';
+        return;
+      }
+      $('#btable').innerHTML = d.backups.map(function(b){
+        return '<tr><td>'+esc(b.name)+'</td><td class="muted">'+fmtSize(b.size)+
+          '</td><td class="muted">'+new Date(b.mtime).toLocaleString()+'</td></tr>';
+      }).join('');
+    });
+  }
+
+  $('#mkbackup').addEventListener('click', function(){
+    var b = $('#mkbackup'); b.disabled = true; b.textContent = 'Working...';
+    api('/api/backups', { method:'POST' })
+      .then(function(){ toast('Backup written', 'ok'); loadBackups(); })
+      .catch(function(ex){ toast(ex.message + (ex.detail ? ' — ' + ex.detail : ''), 'bad'); })
+      .finally(function(){ b.disabled = false; b.textContent = 'Back up now'; });
+  });
+
+  // ---- logs ----
+  $('#lload').addEventListener('click', function(){
+    $('#logs').textContent = 'Loading...';
+    api('/api/logs?unit='+$('#lunit').value+'&lines='+$('#llines').value)
+      .then(function(d){ $('#logs').textContent = d.text; })
+      .catch(function(ex){ $('#logs').textContent = 'Error: ' + ex.message; });
+  });
+
+  function loadAll(){
+    loadOverview().catch(function(ex){ toast(ex.message, 'bad'); });
+  }
+
+  // Probe for an existing session so a reload does not force a fresh login.
+  api('/api/overview').then(function(){ showApp(); loadAll(); }).catch(showLogin);
+})();
+</script>
+</body>
+</html>
