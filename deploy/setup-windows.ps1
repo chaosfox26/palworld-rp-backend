@@ -104,6 +104,35 @@ Node.js was installed but is not usable in this window yet.
 }
 
 # ---------------------------------------------------------------------------
+Write-Step "Checking git"
+
+# npx resolves a github: spec by shelling out to git. Windows does not ship git,
+# and installing Node does not bring it, so a fresh machine failed at the very
+# last step with a bare "npm error code ENOGIT".
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    Write-Ok "git $((& git --version) -replace 'git version ','')"
+} else {
+    Write-Warn "git is not installed. npx needs it to fetch the repository."
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        Die "git is required but winget is not available to install it.
+  Install Git from https://git-scm.com/download/win then run this again."
+    }
+    & winget install --id Git.Git --exact --silent `
+        --accept-package-agreements --accept-source-agreements | Out-Null
+    Update-PathFromRegistry
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Die @"
+git was installed but is not usable in this window yet.
+
+  Close this window, open a NEW Administrator PowerShell, and paste the
+  command again. It will skip straight past the finished steps.
+"@
+    }
+    Write-Ok "git installed"
+}
+
+# ---------------------------------------------------------------------------
 Write-Step "Checking npm and npx"
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {

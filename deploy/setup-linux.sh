@@ -97,6 +97,34 @@ if [ "$need_node" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+step "Checking git"
+
+# npx resolves a `github:owner/repo` spec by shelling out to git — npm has no
+# bundled git. Ubuntu Server does not ship git, so on a genuinely fresh box the
+# install died at the final step with a bare "npm error code ENOGIT", which says
+# nothing about the actual cause.
+#
+# This deliberately sits OUTSIDE the Node block above: a machine that already has
+# Node skips that branch entirely, and would otherwise skip installing git too.
+if command -v git >/dev/null 2>&1; then
+  ok "git $(git --version 2>/dev/null | awk '{print $3}')"
+else
+  warn "git is not installed. npx needs it to fetch the repository."
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get $APT_OPTS update -qq
+    apt-get $APT_OPTS install -y -qq git >/dev/null || die "Installing git failed."
+  elif command -v dnf >/dev/null 2>&1; then dnf install -y -q git || die "Installing git failed."
+  elif command -v yum >/dev/null 2>&1; then yum install -y -q git || die "Installing git failed."
+  elif command -v pacman >/dev/null 2>&1; then pacman -Sy --noconfirm git || die "Installing git failed."
+  elif command -v zypper >/dev/null 2>&1; then zypper --non-interactive install git || die "Installing git failed."
+  else die "git is required and no supported package manager was found. Install git, then re-run."
+  fi
+  hash -r 2>/dev/null || true
+  command -v git >/dev/null 2>&1 || die "git still is not on PATH after installing."
+  ok "git installed"
+fi
+
+# ---------------------------------------------------------------------------
 step "Checking npm and npx"
 
 command -v npm >/dev/null 2>&1 || die "npm is missing even though Node is installed. Install the npm package for your distribution."

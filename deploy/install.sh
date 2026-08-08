@@ -163,9 +163,21 @@ if [ "$need_node" -eq 1 ]; then
   apt-get $APT_OPTS update -qq
   apt-get $APT_OPTS install -y -qq ca-certificates curl gnupg >/dev/null
   install -m 0755 -d /usr/share/keyrings
-  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
-    | gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg
+  # Downloaded to a file first rather than piped straight into gpg. In a pipeline
+  # only the LAST command's status counts, so a failed download produced an empty
+  # keyring and the script carried on to fail two lines later with
+  # "chmod: cannot access ...", which says nothing about the real cause.
+  NODE_KEY_TMP="$(mktemp)"
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o "$NODE_KEY_TMP" \
+    || { rm -f "$NODE_KEY_TMP"; die "Could not download the NodeSource signing key.
+  Check this machine has internet access and can reach deb.nodesource.com."; }
+  gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg < "$NODE_KEY_TMP" \
+    || { rm -f "$NODE_KEY_TMP"; die "The NodeSource signing key could not be decoded."; }
+  rm -f "$NODE_KEY_TMP"
+  [ -s /usr/share/keyrings/nodesource.gpg ] \
+    || die "The NodeSource keyring came out empty. deb.nodesource.com may be down."
   chmod a+r /usr/share/keyrings/nodesource.gpg
+  mkdir -p /etc/apt/sources.list.d
   echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
   apt-get $APT_OPTS update -qq
@@ -182,6 +194,7 @@ else
   apt-get $APT_OPTS install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl >/dev/null
   curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
     | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  mkdir -p /etc/apt/sources.list.d
   curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
     > /etc/apt/sources.list.d/caddy-stable.list
   apt-get $APT_OPTS update -qq

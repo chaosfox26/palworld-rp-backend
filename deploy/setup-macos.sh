@@ -90,6 +90,23 @@ if [ "$need_node" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+step "Checking git"
+
+# npx fetches a `github:owner/repo` spec by shelling out to git. On macOS git
+# arrives with the Xcode command line tools, which Homebrew normally pulls in —
+# but not always, and `brew install node` does not bring it.
+if command -v git >/dev/null 2>&1; then
+  ok "git $(git --version 2>/dev/null | awk '{print $3}')"
+else
+  warn "git is not installed. npx needs it to fetch the repository."
+  "$BREW" install git || die "Installing git through Homebrew failed.
+  Alternatively run: xcode-select --install"
+  hash -r 2>/dev/null || true
+  command -v git >/dev/null 2>&1 || die "git still is not on PATH. Open a new terminal and re-run."
+  ok "git installed"
+fi
+
+# ---------------------------------------------------------------------------
 step "Checking npm and npx"
 
 command -v npm >/dev/null 2>&1 || die "npm is missing even though Node is installed."
