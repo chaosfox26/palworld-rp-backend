@@ -1,4 +1,4 @@
-# 🎭 Palworld RP Backend v2.4.0
+# 🎭 Palworld RP Backend v2.4.1
 
 **A private chat and roleplay-profile server for a Palworld UE4SS/PalSchema mod.**
 

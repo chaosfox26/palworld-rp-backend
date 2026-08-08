@@ -683,10 +683,17 @@ suggest_vnc_port() {
   # If something is already listening on a non-standard port, offer it as the
   # default so the number does not have to be remembered.
   command -v ss >/dev/null 2>&1 || return 0
+  # `|| true` and the explicit `return 0` both matter. This script runs under
+  # `set -euo pipefail`, and with pipefail a grep that matches nothing returns 1
+  # and fails the WHOLE pipeline even though `head` succeeded. Finding no extra
+  # listening port is the normal case on a fresh server, so without this the
+  # installer aborted at the firewall step on exactly the machines it was meant
+  # to help.
   ss -tlnH 2>/dev/null | awk '{print $4}' \
     | grep -vE '^(127\.|\[::1\]|\[?::1)' \
     | sed 's/.*://' | grep -E '^[0-9]+$' | sort -un \
-    | grep -vE "^(22|80|443|${APP_PORT}|${ADMIN_UI_PORT:-8787})$" | head -1
+    | grep -vE "^(22|80|443|${APP_PORT}|${ADMIN_UI_PORT:-8787})$" | head -1 || true
+  return 0
 }
 
 valid_port() {

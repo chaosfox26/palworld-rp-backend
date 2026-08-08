@@ -1,6 +1,6 @@
 {
   "name": "palworld-rp",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Standalone chat and roleplay-profile backend for a Palworld UE4SS/PalSchema mod. One command on Windows, macOS and Linux.",
   "main": "server.js",
   "license": "MIT",
