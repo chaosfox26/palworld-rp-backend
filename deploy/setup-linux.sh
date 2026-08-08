@@ -30,18 +30,31 @@ die()  { printf '\n%s  error%s %s\n\n' "$R" "$N" "$1" >&2; exit 1; }
 # Exported before anything else, and unconditionally. Previously these were set
 # only inside the "Node is missing" branch, so a machine that already had Node
 # skipped them entirely and hit needrestart's prompt later on.
-# Whether a human can actually answer a prompt is decided HERE and nowhere else.
+# Whether a human can actually answer a prompt is decided HERE and nowhere else,
+# and `[ -t 0 ]` alone is NOT the right test.
 #
-# With `curl ... | sudo bash`, sudo's own stdin is the curl pipe. Ubuntu ships
-# `Defaults use_pty`, so sudo allocates a FRESH pty for the child and relays
-# into it from that pipe — which is already at EOF. Deeper in the chain the
-# child sees a pty on stdin and concludes it is interactive, prints a prompt,
-# and then waits forever: the user's keystrokes go to the real terminal, which
-# sudo is not reading. The prompt is unanswerable by construction.
+# With `curl ... | sudo bash`, Ubuntu's default `Defaults use_pty` makes sudo
+# allocate a fresh pty and relay the curl pipe into it. Bash then reads its own
+# PROGRAM from that pty — so `[ -t 0 ]` reports a terminal, and every naive
+# check concludes the install is interactive. It is not: the user's keystrokes
+# go to the real terminal, which sudo never reads. A prompt there waits forever.
 #
-# Only this script, at the top of the chain, can tell the difference. Everything
-# downstream trusts this value.
-if [ -t 0 ]; then PALRP_STDIN_TTY=1; else PALRP_STDIN_TTY=0; fi
+# The honest question is not "is stdin a terminal" but "is bash reading the
+# script itself from stdin". When it is, stdin is spoken for and no answer can
+# arrive. Bash sets $0 to the bare shell name in exactly that case, and to the
+# script's path when it was given a file.
+#
+#   cat f | sudo bash  ->  $0=bash          tty=YES   input NO
+#   sudo bash f        ->  $0=/path/f       tty=YES   input YES
+#   cat f | bash       ->  $0=bash          tty=NO    input NO
+#   bash f             ->  $0=/path/f       tty=YES   input YES
+PALRP_STDIN_TTY=0
+case "$0" in
+  bash|sh|dash|zsh|ksh|-bash|-sh|-dash|-zsh|-ksh|''|-)
+    : ;;                                  # the script arrived on stdin
+  *)
+    [ -t 0 ] && PALRP_STDIN_TTY=1 ;;      # a real file, and a real terminal
+esac
 export PALRP_STDIN_TTY
 
 export DEBIAN_FRONTEND=noninteractive

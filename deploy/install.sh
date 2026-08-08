@@ -31,7 +31,10 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 trap 'die "Install failed at line $LINENO. Re-running this script is safe: it is idempotent and your data in '"$DATA_DIR"' is untouched."' ERR
 
-reattach_tty
+# No reattach_tty here. Nothing in this script reads stdin any more, and
+# re-pointing stdin at /dev/tty is exactly what made a piped install look
+# interactive: under sudo's `use_pty` the child gets a pty it can never read
+# from, prints a prompt, and waits forever.
 
 # --- Preflight --------------------------------------------------------------
 step "Preflight checks"
@@ -697,130 +700,94 @@ chmod 0755 "${APP_DIR}/deploy/backup.sh" 2>/dev/null || true
 # --- Firewall ---------------------------------------------------------------
 step "Firewall"
 
-# 22, 80 and 443 are always opened.
-#   22  — SSH. Enabling a firewall without it is the classic way to lock
-#          yourself out of a remote server permanently.
-#   80  — Let's Encrypt validates over it. Closed means no certificate, and a
-#          silent renewal failure three months later.
-#   443 — what players actually connect to.
 FW_PORTS="22/tcp 80/tcp 443/tcp"
 
-# Anything else is site-specific, so it is asked for rather than guessed. A VNC
-# or remote-console port is the common case on a VPS.
-suggest_vnc_port() {
-  # If something is already listening on a non-standard port, offer it as the
-  # default so the number does not have to be remembered.
-  command -v ss >/dev/null 2>&1 || return 0
-  # `|| true` and the explicit `return 0` both matter. This script runs under
-  # `set -euo pipefail`, and with pipefail a grep that matches nothing returns 1
-  # and fails the WHOLE pipeline even though `head` succeeded. Finding no extra
-  # listening port is the normal case on a fresh server, so without this the
-  # installer aborted at the firewall step on exactly the machines it was meant
-  # to help.
-  ss -tlnH 2>/dev/null | awk '{print $4}' \
-    | grep -vE '^(127\.|\[::1\]|\[?::1)' \
-    | sed 's/.*://' | grep -E '^[0-9]+$' | sort -un \
-    | grep -vE "^(22|80|443|${APP_PORT}|${ADMIN_UI_PORT:-8787})$" | head -1 || true
-  return 0
-}
+if [ -n "${VNC_PORT:-}" ]; then
+  case "$VNC_PORT" in
+    ''|*[!0-9]*) warn "VNC_PORT=\"${VNC_PORT}\" is not a port number. Ignoring it." ;;
+    *)
+      if [ "$VNC_PORT" -ge 1 ] 2>/dev/null && [ "$VNC_PORT" -le 65535 ] 2>/dev/null; then
+        FW_PORTS="$FW_PORTS ${VNC_PORT}/tcp"
+      else
+        warn "VNC_PORT=${VNC_PORT} is out of range (1-65535). Ignoring it."
+      fi
+      ;;
+  esac
+fi
 
-valid_port() {
-  case "$1" in ''|*[!0-9]*) return 1 ;; esac
-  [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 65535 ] 2>/dev/null
-}
-
-VNC_CHOICE="${VNC_PORT:-}"
-
-# PALRP_STDIN_TTY is set by setup-linux.sh (or the CLI) at the top of the chain.
-# `[ -t 0 ]` is NOT sufficient on its own: under `curl | sudo bash` with
-# Ubuntu's default `use_pty`, stdin here IS a pty, but nothing the user types
-# can ever reach it. Prompting in that case guarantees a hang.
+# Whether a human can answer is decided at the TOP of the chain and passed down.
+# `[ -t 0 ]` is not trustworthy here: under `curl | sudo bash`, Ubuntu's default
+# `use_pty` hands this process a pty it can never read from, so it looks
+# interactive while being unanswerable. Asking in that state hangs forever.
 CAN_PROMPT=0
 case "${PALRP_STDIN_TTY:-unset}" in
   1)     CAN_PROMPT=1 ;;
   0)     CAN_PROMPT=0 ;;
-  unset) [ -t 0 ] && CAN_PROMPT=1 ;;   # invoked directly, no wrapper
+  unset) [ -t 0 ] && CAN_PROMPT=1 ;;   # run directly, no wrapper above us
 esac
 
-if [ -n "$VNC_CHOICE" ]; then
-  : # supplied non-interactively
-elif [ "$CAN_PROMPT" = "0" ]; then
-  warn "This install was piped from another command, so it cannot read a reply."
-  warn "Ports 22, 80 and 443 are open. To open a VNC or console port as well:"
-  echo
-  echo "        sudo ufw allow <port>/tcp"
-  echo
-  echo "    Or re-run non-interactively with:  VNC_PORT=<port>"
+UFW_CHOICE="${UFW:-}"
+
+if [ -n "$UFW_CHOICE" ]; then
+  : # decided by the caller
 elif [ "$CAN_PROMPT" = "1" ]; then
-  DEFAULT_VNC="$(suggest_vnc_port)"
   echo
-  echo "  Ports 22 (SSH), 80 and 443 will be opened automatically."
+  echo "  Configure the local firewall (ufw)?"
   echo
-  if [ -n "$DEFAULT_VNC" ]; then
-    echo "  Something is listening on port ${DEFAULT_VNC} — that is probably your"
-    echo "  VNC or remote console."
-    printf '  VNC port to open [%s], "n" for none (30s, then skipped): ' "$DEFAULT_VNC"
+  echo "    yes  allow ${FW_PORTS}, then turn ufw on"
+  echo "    no   leave this machine's firewall completely alone"
+  echo
+  echo "  If your VPS provider has its own firewall — Contabo, Hetzner and OVH"
+  echo "  all do — it already controls access and this is optional."
+  printf '  Configure ufw? [y/N] (30s, then no): '
+  if read -r -t 30 UFW_CHOICE; then
+    :
   else
-    echo "  If you use a VNC or remote console, enter its port so the firewall"
-    echo "  does not cut you off from it."
-    printf '  VNC port to open, blank for none (30s, then skipped): '
-  fi
-  # `read -t` is not optional here. This installer is normally run as
-  # `curl ... | sudo bash`, where stdin is the pipe and lib.sh re-attaches
-  # /dev/tty. Whether that re-attached descriptor actually delivers keystrokes
-  # depends on process-group details that differ between terminals, VNC
-  # consoles and SSH sessions. Without a timeout, a read that never receives
-  # input hangs the install forever with a blinking cursor and no explanation.
-  # Thirty seconds is long enough to type a port, short enough not to look
-  # broken.
-  VNC_CHOICE=""
-  if read -r -t 30 VNC_CHOICE; then
-    case "$VNC_CHOICE" in
-      n|N|no|NO) VNC_CHOICE="" ;;
-      '')        VNC_CHOICE="${DEFAULT_VNC:-}" ;;
-    esac
-  else
-    VNC_CHOICE=""
+    UFW_CHOICE="n"
     echo
-    warn "No answer after 30 seconds, so no VNC port was opened."
-    warn "Add one at any time with:  sudo ufw allow <port>/tcp"
-    warn "Or re-run the installer with: VNC_PORT=<port>"
+    warn "No answer after 30 seconds; leaving the firewall alone."
   fi
 else
-  warn "Not interactive, so no VNC port was requested."
-  warn "To open one, re-run with: VNC_PORT=63274"
+  UFW_CHOICE="n"
+  ok "Not an interactive install, so the firewall is left alone."
+  echo "    To configure it, re-run with UFW=y (optionally with VNC_PORT=<port>)."
 fi
 
-if [ -n "$VNC_CHOICE" ]; then
-  if valid_port "$VNC_CHOICE"; then
-    FW_PORTS="$FW_PORTS ${VNC_CHOICE}/tcp"
-    ok "Will also open ${VNC_CHOICE}/tcp for VNC"
-  else
-    warn "\"${VNC_CHOICE}\" is not a valid port number (1-65535). Skipping it."
-  fi
-fi
+case "$UFW_CHOICE" in
+  y|Y|yes|YES|Yes)
+    if ! command -v ufw >/dev/null 2>&1; then
+      warn "ufw is not installed, so there is nothing to configure."
+    else
+      # 22 is allowed before enabling, every time. Turning on a firewall that
+      # blocks SSH is the classic way to lose a remote machine permanently.
+      for pspec in $FW_PORTS; do
+        ufw allow "$pspec" >/dev/null 2>&1 || warn "Could not add ufw rule for ${pspec}"
+      done
+      ok "Allowed ${FW_PORTS}"
+      if ufw status 2>/dev/null | grep -q "Status: active"; then
+        ok "ufw was already active; rules updated"
+      else
+        # --force because plain `ufw enable` asks its own y/n question, which
+        # would reintroduce exactly the hang this design avoids.
+        ufw --force enable >/dev/null 2>&1 && ok "ufw enabled" \
+          || warn "Could not enable ufw. Run: sudo ufw enable"
+      fi
+      if ufw status | grep -qE "^${APP_PORT}[/ ]"; then
+        warn "Port ${APP_PORT} is open in ufw. It does not need to be — the app binds loopback only."
+        warn "Close it with: sudo ufw delete allow ${APP_PORT}/tcp"
+      fi
+    fi
+    ;;
+  *)
+    ok "Firewall left untouched"
+    echo "    To open ports here later: sudo ufw allow <port>/tcp"
+    ;;
+esac
 
-if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  for pspec in $FW_PORTS; do
-    ufw allow "$pspec" >/dev/null 2>&1 || warn "Could not add ufw rule for ${pspec}"
-  done
-  ok "ufw: opened ${FW_PORTS}"
-  if ufw status | grep -qE "^${APP_PORT}[/ ]"; then
-    warn "Port ${APP_PORT} appears to be open in ufw. It no longer needs to be — the app binds loopback only."
-    warn "Close it with: sudo ufw delete allow ${APP_PORT}/tcp"
-  fi
-else
-  warn "ufw is not active, so no rules were applied. To turn it on:"
-  echo
-  for pspec in $FW_PORTS; do echo "        sudo ufw allow ${pspec}"; done
-  echo "        sudo ufw enable"
-  echo
-  echo "    Run the allow lines FIRST. Enabling ufw before allowing 22 will"
-  echo "    disconnect you, and keep a second session open until you have"
-  echo "    confirmed you can still get back in."
-fi
-warn "Your VPS host has a separate firewall in its web panel. Ports 80 and 443"
-warn "must be open there too, or the certificate will never be issued."
+echo
+warn "Ports 80 and 443 must be open in your VPS provider's control panel."
+warn "That panel is separate from this machine, and is the usual reason a"
+warn "certificate never arrives."
 
 # --- Start ------------------------------------------------------------------
 step "Starting services"

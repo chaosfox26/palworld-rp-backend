@@ -1,4 +1,4 @@
-# 🎭 Palworld RP Backend v2.5.1
+# 🎭 Palworld RP Backend v2.6.1
 
 **A private chat and roleplay-profile server for a Palworld UE4SS/PalSchema mod.**
 
@@ -40,7 +40,7 @@ Open a terminal on that machine, paste **one** line, press Enter:
 | 2️⃣ | Installs **Caddy** | A web server that gets you a free HTTPS certificate automatically. Downloaded straight from its official GitHub release and checksum-verified — no third-party apt repository. |
 | 3️⃣ | Creates a **locked-down user** | The server runs as `palrp`, which has no password and no shell. If it were ever hacked, the attacker gets almost nothing. |
 | 4️⃣ | Gets an **HTTPS certificate** | Free, from Let's Encrypt. No domain needed — it builds a hostname from your IP. |
-| 5️⃣ | Opens **22, 80 and 443** | SSH, plus the doors your players connect through. It also asks whether to open your VNC or remote-console port. |
+| 5️⃣ | **Asks** whether to configure ufw | Answer **n** to leave this machine's firewall alone — sensible if your VPS provider's panel firewall already controls access. Answer **y** to allow 22/80/443 and turn ufw on. Piped installs skip it automatically. |
 | 6️⃣ | Starts it **at boot** | Reboot the machine and it comes back on its own. |
 | 7️⃣ | Prints your **Backend URL** | Paste this into the mod. This is the only thing you need to keep. |
 
@@ -411,7 +411,7 @@ Every one of these is a real error somebody has hit.
 | :--- | :--- | :--- |
 | `install: missing file operand` | You put a word after the npx spec, so npm ran `/usr/bin/install` | Drop the trailing word: `npx -y github:chaosfox26/palworld-rp-backend` |
 | `ERROR: You must supply a command` | The **deprecated standalone npx** package is shadowing npm's built-in one | `sudo npm uninstall -g npx` then `hash -r` |
-| **Install hangs at the VNC port prompt** | You piped the installer (`curl \| sudo bash`). Ubuntu's `Defaults use_pty` gives the child a fresh pty, so it looks interactive, but sudo relays into it from the curl pipe — your keystrokes never arrive | Fixed in v2.5.1: piped installs no longer prompt. To choose a port, download first: `curl -o /tmp/setup.sh ...` then `sudo VNC_PORT=63274 bash /tmp/setup.sh` |
+| **Install hangs at the VNC port prompt** | Old versions prompted here. Under `curl \| sudo bash`, Ubuntu's `Defaults use_pty` gives the child a pty it can never read from, so the prompt was unanswerable | Fixed in v2.6.1: piped installs are detected by whether bash is reading the script from stdin, not by `[ -t 0 ]` (which lies under sudo's use_pty), so they never prompt. Set `VNC_PORT=63274` to open an extra port, or run `sudo ufw allow 63274/tcp` afterwards |
 | **Install hangs at "Installing Caddy"** | `needrestart` is showing an invisible "restart which services?" prompt, or `unattended-upgrades` holds the apt lock | Ctrl-C, then re-run with `sudo NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 DEBIAN_FRONTEND=noninteractive bash /tmp/setup.sh`. Fixed for good in v2.3.2. |
 | `open /var/log/caddy/access.log: permission denied` | Caddy can't write its log, so it never starts | `sudo chown -R caddy:caddy /var/log/caddy` then restart Caddy |
 | HTTPS never comes up | Usually the **VPS control-panel firewall**, not the server | Open 80 **and** 443 in your host's web panel. Then `palworld-rp doctor` |
