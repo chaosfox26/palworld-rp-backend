@@ -27,6 +27,14 @@ ok()   { printf '%s  ok%s   %s\n' "$G" "$N" "$1"; }
 warn() { printf '%s  warn%s %s\n' "$Y" "$N" "$1"; }
 die()  { printf '\n%s  error%s %s\n\n' "$R" "$N" "$1" >&2; exit 1; }
 
+# Exported before anything else, and unconditionally. Previously these were set
+# only inside the "Node is missing" branch, so a machine that already had Node
+# skipped them entirely and hit needrestart's prompt later on.
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+APT_OPTS="-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
+
 printf '\n%s  Palworld RP Backend — Linux setup%s\n' "$B" "$N"
 
 # ---------------------------------------------------------------------------
@@ -62,15 +70,14 @@ fi
 
 if [ "$need_node" -eq 1 ]; then
   if command -v apt-get >/dev/null 2>&1; then
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq curl ca-certificates gnupg >/dev/null
+    apt-get $APT_OPTS update -qq
+    apt-get $APT_OPTS install -y -qq curl ca-certificates gnupg >/dev/null
     # NodeSource rather than the distribution package: Ubuntu ships versions of
     # Node too old for this project, and its `nodejs` package historically did
     # not include npm at all — which is precisely the npx problem.
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null 2>&1 \
       || die "Could not add the NodeSource repository."
-    apt-get install -y -qq nodejs >/dev/null || die "Installing Node.js failed."
+    apt-get $APT_OPTS install -y -qq nodejs >/dev/null || die "Installing Node.js failed."
   elif command -v dnf >/dev/null 2>&1; then
     curl -fsSL "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null 2>&1 || true
     dnf install -y -q nodejs || die "Installing Node.js failed."

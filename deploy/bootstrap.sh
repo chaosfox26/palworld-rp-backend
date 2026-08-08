@@ -105,15 +105,19 @@ case "$OS" in
     command -v systemctl >/dev/null 2>&1 || die "systemd is required; this is not a systemd host."
 
     export DEBIAN_FRONTEND=noninteractive
+    # needrestart will otherwise prompt after any service package. See install.sh.
+    export NEEDRESTART_MODE=a
+    export NEEDRESTART_SUSPEND=1
+    APT_OPTS="-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
     NEEDED=""
     for pkg in git curl ca-certificates; do
       dpkg -s "$pkg" >/dev/null 2>&1 || NEEDED="$NEEDED $pkg"
     done
     if [ -n "$NEEDED" ]; then
       step "Installing:${NEEDED}"
-      apt-get update -qq
+      apt-get $APT_OPTS update -qq
       # shellcheck disable=SC2086
-      apt-get install -y -qq $NEEDED >/dev/null
+      apt-get $APT_OPTS install -y -qq $NEEDED >/dev/null
       ok "Installed${NEEDED}"
     else
       ok "git and curl already present"

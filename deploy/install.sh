@@ -126,6 +126,26 @@ if ss -ltn "sport = :${APP_PORT}" 2>/dev/null | grep -q LISTEN; then
 fi
 
 # --- Node.js ----------------------------------------------------------------
+# --- Unattended apt ----------------------------------------------------------
+# Three separate things can make apt sit there forever on a modern Ubuntu box,
+# and all three have to be handled or the install appears to hang:
+#
+#   1. needrestart. Ubuntu 22.04+ installs it by default. After any package that
+#      provides a service — Caddy does — it opens a whiptail dialog asking which
+#      services to restart. DEBIAN_FRONTEND does NOT suppress it; it has its own
+#      variables. This is the usual cause of a hang at "Installing Caddy".
+#   2. dpkg config prompts. This installer rewrites /etc/caddy/Caddyfile, so on a
+#      reinstall dpkg would stop to ask whether to keep the modified version.
+#   3. The dpkg lock. On a freshly booted VPS, unattended-upgrades is often still
+#      running and apt blocks on the lock silently, with no output at all.
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
+# Wait up to ten minutes for the lock, then fail with a real message rather than
+# hanging indefinitely.
+APT_OPTS="-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
+
 step "Installing Node.js ${NODE_MAJOR}"
 
 need_node=1
@@ -140,17 +160,16 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$need_node" -eq 1 ]; then
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
-  apt-get install -y -qq ca-certificates curl gnupg >/dev/null
+  apt-get $APT_OPTS update -qq
+  apt-get $APT_OPTS install -y -qq ca-certificates curl gnupg >/dev/null
   install -m 0755 -d /usr/share/keyrings
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     | gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg
   chmod a+r /usr/share/keyrings/nodesource.gpg
   echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
-  apt-get update -qq
-  apt-get install -y -qq nodejs >/dev/null
+  apt-get $APT_OPTS update -qq
+  apt-get $APT_OPTS install -y -qq nodejs >/dev/null
   ok "Node $(node -v) installed"
 fi
 
@@ -160,14 +179,13 @@ step "Installing Caddy"
 if command -v caddy >/dev/null 2>&1; then
   ok "Caddy $(caddy version | head -1) already installed"
 else
-  export DEBIAN_FRONTEND=noninteractive
-  apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl >/dev/null
+  apt-get $APT_OPTS install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl >/dev/null
   curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
     | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
   curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
     > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -qq
-  apt-get install -y -qq caddy >/dev/null
+  apt-get $APT_OPTS update -qq
+  apt-get $APT_OPTS install -y -qq caddy >/dev/null
   ok "Caddy $(caddy version | head -1) installed"
 fi
 
