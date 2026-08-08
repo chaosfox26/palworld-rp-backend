@@ -1,4 +1,4 @@
-# 🎭 Palworld RP Backend v2.4.1
+# 🎭 Palworld RP Backend v2.5.0
 
 **A private chat and roleplay-profile server for a Palworld UE4SS/PalSchema mod.**
 
@@ -53,6 +53,17 @@ When it finishes you'll see:
 ```
 
 **That URL is the whole point.** Copy it into the mod's settings and you're done.
+
+### 🔊 It prints everything as it goes
+
+The installer shows the real output of every download and package install, so a
+slow step looks slow and a stuck step looks stuck. If you would rather have a
+tidy summary, prefix the command with `QUIET=1`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chaosfox26/palworld-rp-backend/main/deploy/setup-linux.sh -o /tmp/setup.sh
+sudo QUIET=1 bash /tmp/setup.sh
+```
 
 ### ⚠️ One thing that catches nearly everyone
 

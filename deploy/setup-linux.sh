@@ -35,6 +35,16 @@ export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
 APT_OPTS="-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
 
+# Loud by default: a hidden package install that stalls is indistinguishable
+# from one that is merely slow. Set QUIET=1 for summary-only output.
+QUIET="${QUIET:-0}"
+if [ "$QUIET" = "1" ]; then
+  APT_Q="-qq"; loud() { "$@" >/dev/null 2>&1; }
+else
+  APT_Q="";    loud() { "$@"; }
+fi
+export QUIET
+
 printf '\n%s  Palworld RP Backend — Linux setup%s\n' "$B" "$N"
 
 # ---------------------------------------------------------------------------
@@ -70,14 +80,19 @@ fi
 
 if [ "$need_node" -eq 1 ]; then
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get $APT_OPTS update -qq
-    apt-get $APT_OPTS install -y -qq curl ca-certificates gnupg >/dev/null
+    loud apt-get $APT_OPTS update $APT_Q
+    loud apt-get $APT_OPTS install -y $APT_Q curl ca-certificates gnupg
     # NodeSource rather than the distribution package: Ubuntu ships versions of
     # Node too old for this project, and its `nodejs` package historically did
     # not include npm at all — which is precisely the npx problem.
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null 2>&1 \
-      || die "Could not add the NodeSource repository."
-    apt-get $APT_OPTS install -y -qq nodejs >/dev/null || die "Installing Node.js failed."
+    if [ "$QUIET" = "1" ]; then
+      curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null 2>&1 \
+        || die "Could not add the NodeSource repository."
+    else
+      curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+        || die "Could not add the NodeSource repository."
+    fi
+    loud apt-get $APT_OPTS install -y $APT_Q nodejs || die "Installing Node.js failed."
   elif command -v dnf >/dev/null 2>&1; then
     curl -fsSL "https://rpm.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null 2>&1 || true
     dnf install -y -q nodejs || die "Installing Node.js failed."
@@ -111,8 +126,8 @@ if command -v git >/dev/null 2>&1; then
 else
   warn "git is not installed. npx needs it to fetch the repository."
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get $APT_OPTS update -qq
-    apt-get $APT_OPTS install -y -qq git >/dev/null || die "Installing git failed."
+    loud apt-get $APT_OPTS update $APT_Q
+    loud apt-get $APT_OPTS install -y $APT_Q git || die "Installing git failed."
   elif command -v dnf >/dev/null 2>&1; then dnf install -y -q git || die "Installing git failed."
   elif command -v yum >/dev/null 2>&1; then yum install -y -q git || die "Installing git failed."
   elif command -v pacman >/dev/null 2>&1; then pacman -Sy --noconfirm git || die "Installing git failed."

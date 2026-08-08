@@ -146,6 +146,28 @@ export NEEDRESTART_SUSPEND=1
 # hanging indefinitely.
 APT_OPTS="-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef"
 
+# --- Verbosity ---------------------------------------------------------------
+# Loud by default. Every hang this installer has ever produced — a stalled
+# repository fetch, a package manager waiting on a lock, an invisible prompt —
+# looked identical from the outside precisely because the output was hidden:
+# a step header and then nothing. Showing the real output makes a slow step
+# obviously slow and a stuck step obviously stuck.
+#
+# Set QUIET=1 for the tidy summary-only output.
+QUIET="${QUIET:-0}"
+if [ "$QUIET" = "1" ]; then
+  APT_Q="-qq"
+  CURL_Q="-s"
+  NPM_Q="--silent"
+  # Swallow stdout and stderr of long operations.
+  loud() { "$@" >/dev/null 2>&1; }
+else
+  APT_Q=""
+  CURL_Q="--progress-bar"
+  NPM_Q=""
+  loud() { "$@"; }
+fi
+
 step "Installing Node.js ${NODE_MAJOR}"
 
 need_node=1
@@ -160,8 +182,8 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 if [ "$need_node" -eq 1 ]; then
-  apt-get $APT_OPTS update -qq
-  apt-get $APT_OPTS install -y -qq ca-certificates curl gnupg >/dev/null
+  loud apt-get $APT_OPTS update $APT_Q
+  loud apt-get $APT_OPTS install -y $APT_Q ca-certificates curl gnupg
   install -m 0755 -d /usr/share/keyrings
   # Downloaded to a file first rather than piped straight into gpg. In a pipeline
   # only the LAST command's status counts, so a failed download produced an empty
@@ -181,8 +203,8 @@ if [ "$need_node" -eq 1 ]; then
   mkdir -p /etc/apt/sources.list.d
   echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
     > /etc/apt/sources.list.d/nodesource.list
-  apt-get $APT_OPTS update -qq
-  apt-get $APT_OPTS install -y -qq nodejs >/dev/null
+  loud apt-get $APT_OPTS update $APT_Q
+  loud apt-get $APT_OPTS install -y $APT_Q nodejs
   ok "Node $(node -v) installed"
 fi
 
@@ -236,7 +258,7 @@ else
   echo "  Downloading ${CADDY_TGZ} (about 16 MB)"
   # Every flag here earns its place: --max-time stops the indefinite hang that
   # the apt repo caused, and --retry rides out a transient blip.
-  curl -fL --proto '=https' --tlsv1.2 \
+  curl -fL $CURL_Q --proto '=https' --tlsv1.2 \
        --connect-timeout 20 --max-time 300 --retry 3 --retry-delay 3 \
        -o "${CADDY_TMP}/${CADDY_TGZ}" "$CADDY_URL" \
     || { rm -rf "$CADDY_TMP"; die "Could not download Caddy from GitHub.
@@ -713,17 +735,33 @@ elif [ -t 0 ]; then
   if [ -n "$DEFAULT_VNC" ]; then
     echo "  Something is listening on port ${DEFAULT_VNC} — that is probably your"
     echo "  VNC or remote console."
-    printf '  VNC port to open [%s], or "n" for none: ' "$DEFAULT_VNC"
+    printf '  VNC port to open [%s], "n" for none (30s, then skipped): ' "$DEFAULT_VNC"
   else
     echo "  If you use a VNC or remote console, enter its port so the firewall"
     echo "  does not cut you off from it."
-    printf '  VNC port to open (blank for none): '
+    printf '  VNC port to open, blank for none (30s, then skipped): '
   fi
-  read -r VNC_CHOICE || VNC_CHOICE=""
-  case "$VNC_CHOICE" in
-    n|N|no|NO) VNC_CHOICE="" ;;
-    '')        VNC_CHOICE="${DEFAULT_VNC:-}" ;;
-  esac
+  # `read -t` is not optional here. This installer is normally run as
+  # `curl ... | sudo bash`, where stdin is the pipe and lib.sh re-attaches
+  # /dev/tty. Whether that re-attached descriptor actually delivers keystrokes
+  # depends on process-group details that differ between terminals, VNC
+  # consoles and SSH sessions. Without a timeout, a read that never receives
+  # input hangs the install forever with a blinking cursor and no explanation.
+  # Thirty seconds is long enough to type a port, short enough not to look
+  # broken.
+  VNC_CHOICE=""
+  if read -r -t 30 VNC_CHOICE; then
+    case "$VNC_CHOICE" in
+      n|N|no|NO) VNC_CHOICE="" ;;
+      '')        VNC_CHOICE="${DEFAULT_VNC:-}" ;;
+    esac
+  else
+    VNC_CHOICE=""
+    echo
+    warn "No answer after 30 seconds, so no VNC port was opened."
+    warn "Add one at any time with:  sudo ufw allow <port>/tcp"
+    warn "Or re-run the installer with: VNC_PORT=<port>"
+  fi
 else
   warn "Not interactive, so no VNC port was requested."
   warn "To open one, re-run with: VNC_PORT=63274"
