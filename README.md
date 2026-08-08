@@ -152,8 +152,8 @@ itself so a modified client cannot eavesdrop on a channel it does not belong to.
 | Player types | Mod sends `type` | Who actually receives it | Notes |
 | :--- | :--- | :--- | :--- |
 | `/s Hello there` | `say` | Players within **3,000 units** | Ordinary local speech. Range is configurable. |
-| `/em waves slowly` | `emote` | Players within **3,000 units** | Rendered as *"Aely waves slowly"*. |
-| `/w Aiden psst` | `whisper` | **Only Aiden.** Nobody else. | Delivered to that account's sockets and no others. |
+| `/em waves slowly` | `emote` | Players within **3,000 units** | Rendered as *"Player waves slowly"*. |
+| `/w Player2 psst` | `whisper` | **Only Player2.** Nobody else. | Delivered to that account's sockets and no others. |
 | `/p Regrouping` | `party` | Everyone in your party | Parties are temporary and vanish when empty. |
 | `/g For the guild` | `guild` | Everyone in your guild | You must have joined a guild first. |
 | `/global Anyone about?` | `global` | **Every player online** | Costs the most against your rate limit. |
@@ -292,9 +292,9 @@ data/
 ```
 
 ```jsonc
-// accounts/aely.account — never served to any player
+// accounts/player.account — never served to any player
 {
-  "name": "aely",
+  "name": "player",
   "salt": "…",                  // unique per account
   "hash": "…",                  // scrypt. The password itself is never stored
   "createdAt": 1786163439000,
@@ -305,10 +305,10 @@ data/
   "banReason": ""
 }
 
-// profiles/aely.profile — public, returned by /profile and /who
+// profiles/player.profile — public, returned by /profile and /who
 {
-  "name": "aely",
-  "displayName": "Aely Vanterpool",
+  "name": "player",
+  "displayName": "Player",
   "pronouns": "she/her",
   "occupation": "Blacksmith",
   "appearance": "Soot-stained apron, copper hair",
